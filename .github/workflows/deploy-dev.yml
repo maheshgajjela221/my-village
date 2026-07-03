@@ -1,53 +1,77 @@
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: rechini-postgres
-    restart: always
-    env_file:
-      - ./backend/.env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/src/sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-    ports:
-      - "127.0.0.1:5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+name: Deploy My Village Website Dev
 
-  backend:
-    build: ./backend
-    container_name: rechini-backend
-    restart: always
-    env_file:
-      - ./backend/.env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    expose:
-      - "5000"
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
 
-  frontend:
-    build: ./frontend
-    container_name: rechini-frontend
-    restart: always
-    depends_on:
-      - backend
-    expose:
-      - "80"
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
 
-  nginx:
-    image: nginx:alpine
-    container_name: rechini-nginx
-    restart: always
-    depends_on:
-      - frontend
-      - backend
-    ports:
-      - "8088:80"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    steps:
+      - name: Deploy Dev Server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            set -e
 
-volumes:
-  postgres_data:
+            APP_DIR="/home/ubuntu/my-village-dev"
+            REPO_URL="https://github.com/maheshgajjela221/my-village.git"
+            BRANCH="dev"
+
+            echo "===== Installing required packages if missing ====="
+
+            if ! command -v git >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y git
+            fi
+
+            if ! command -v docker >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker.io docker-compose-plugin
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            fi
+
+            if ! sudo docker compose version >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker-compose-plugin
+            fi
+
+            echo "===== Cloning dev branch if not exists ====="
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              cd /home/ubuntu
+              sudo rm -rf my-village-dev
+              git clone -b "$BRANCH" "$REPO_URL" my-village-dev
+            fi
+
+            echo "===== Pulling latest dev code ====="
+
+            cd "$APP_DIR"
+            git fetch origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+
+            echo "===== Creating dev backend .env ====="
+
+            cat > backend/.env <<'EOF'
+            ${{ secrets.DEV_BACKEND_ENV }}
+            EOF
+
+            echo "===== Building and deploying dev containers ====="
+
+            sudo docker compose -p my-village-dev down
+            sudo docker compose -p my-village-dev up -d --build
+
+            echo "===== Cleaning old Docker images ====="
+
+            sudo docker image prune -f
+
+            echo "===== Dev deployment completed ====="
+
+            sudo docker ps
