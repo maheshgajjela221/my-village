@@ -1,0 +1,344 @@
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Bell,
+  CalendarDays,
+  HeartPulse,
+  Home,
+  Lock,
+  LogIn,
+  MessageSquareWarning,
+  Newspaper,
+  ShieldCheck,
+  Users,
+  Wheat,
+} from "lucide-react";
+import "./style.css";
+
+const API = "/api";
+
+function App() {
+  const [news, setNews] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [medicalCamps, setMedicalCamps] = useState([]);
+  const [complaints, setComplaints] = useState([]);
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
+  const [token, setToken] = useState(localStorage.getItem("token") || "");
+  const [login, setLogin] = useState({ phone: "", password: "" });
+  const [complaint, setComplaint] = useState({
+    name: "",
+    phone: "",
+    ward_no: "1",
+    category: "Water Supply",
+    message: "",
+  });
+
+  const isLeader = user && ["sarpanch", "upa_sarpanch", "admin"].includes(user.role);
+
+  useEffect(() => {
+    loadPublicData();
+  }, []);
+
+  useEffect(() => {
+    if (isLeader) loadComplaints();
+  }, [token]);
+
+  async function loadPublicData() {
+    const [n, e, m] = await Promise.all([
+      fetch(`${API}/news`).then((r) => r.json()),
+      fetch(`${API}/events`).then((r) => r.json()),
+      fetch(`${API}/medical-camps`).then((r) => r.json()),
+    ]);
+    setNews(n);
+    setEvents(e);
+    setMedicalCamps(m);
+  }
+
+  async function doLogin(e) {
+    e.preventDefault();
+
+    const res = await fetch(`${API}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(login),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.message || "Login failed");
+      return;
+    }
+
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+    setToken(data.token);
+    setUser(data.user);
+    setLogin({ phone: "", password: "" });
+    alert("Login successful");
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setToken("");
+    setUser(null);
+    setComplaints([]);
+  }
+
+  async function submitComplaint(e) {
+    e.preventDefault();
+
+    const res = await fetch(`${API}/complaints`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...complaint,
+        ward_no: Number(complaint.ward_no),
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.message || "Complaint failed");
+      return;
+    }
+
+    alert("Complaint submitted. It is visible only to Sarpanch and Upa-Sarpanch.");
+    setComplaint({
+      name: "",
+      phone: "",
+      ward_no: "1",
+      category: "Water Supply",
+      message: "",
+    });
+  }
+
+  async function loadComplaints() {
+    const res = await fetch(`${API}/complaints`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (res.ok) {
+      setComplaints(await res.json());
+    }
+  }
+
+  async function updateComplaint(id, status) {
+    const res = await fetch(`${API}/complaints/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ status }),
+    });
+
+    if (res.ok) loadComplaints();
+  }
+
+  return (
+    <div>
+      <nav className="navbar">
+        <div className="brand">
+          <div className="brandIcon"><Home size={22} /></div>
+          <div>
+            <h1>Rechini Village</h1>
+            <p>Tandur Mandal · Mancherial District</p>
+          </div>
+        </div>
+        <div className="navLinks">
+          <a href="#news">News</a>
+          <a href="#events">Events</a>
+          <a href="#medical">Medical</a>
+          <a href="#complaints">Complaints</a>
+          <a href="#login">Login</a>
+        </div>
+      </nav>
+
+      <section className="hero">
+        <div className="heroText">
+          <span className="pill"><ShieldCheck size={17} /> Digital Village Portal</span>
+          <h2>Smart village services for Rechini people.</h2>
+          <p>
+            Events, pensions, ration updates, medical camps, 14 ward information,
+            and private complaint system for Sarpanch and Upa-Sarpanch.
+          </p>
+          <div className="heroButtons">
+            <a href="#complaints" className="primaryBtn">Submit Complaint</a>
+            <a href="#login" className="secondaryBtn">Leader Login</a>
+          </div>
+        </div>
+
+        <div className="heroCard">
+          <h3>Village Overview</h3>
+          <div className="stats">
+            <div><b>14</b><span>Wards</span></div>
+            <div><b>{news.length}</b><span>News</span></div>
+            <div><b>{events.length}</b><span>Events</span></div>
+            <div><b>{medicalCamps.length}</b><span>Camps</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="modules">
+        <SectionTitle small="Main Modules" title="What villagers can use" />
+        <div className="grid3">
+          <Feature icon={<Newspaper />} title="Village News" text="Pensions, ration, schemes and public announcements." />
+          <Feature icon={<CalendarDays />} title="Events" text="Village meetings, festivals and public programs." />
+          <Feature icon={<HeartPulse />} title="Medical Camps" text="Health camps, doctor visits and checkup details." />
+          <Feature icon={<MessageSquareWarning />} title="Complaints" text="Private complaint system for 14 wards." />
+          <Feature icon={<Wheat />} title="Farmers Info" text="Seeds, fertilizer, crop and farmer scheme updates." />
+          <Feature icon={<Users />} title="Ward Details" text="Information for Ward 1 to Ward 14." />
+        </div>
+      </section>
+
+      <section id="news" className="white">
+        <SectionTitle small="Latest Updates" title="News, pensions, ration and schemes" />
+        <div className="grid3">
+          {news.map((item) => (
+            <Card key={item.id} tag={item.category} title={item.title} text={item.description} />
+          ))}
+        </div>
+      </section>
+
+      <section id="events">
+        <SectionTitle small="Village Calendar" title="Events and programs" />
+        <div className="grid3">
+          {events.map((item) => (
+            <Card
+              key={item.id}
+              tag={new Date(item.event_date).toLocaleDateString()}
+              title={item.title}
+              text={`${item.location || ""} - ${item.description}`}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section id="medical" className="dark">
+        <SectionTitle small="Health Support" title="Medical camp information" />
+        <div className="grid3">
+          {medicalCamps.map((item) => (
+            <Card
+              key={item.id}
+              tag={new Date(item.camp_date).toLocaleDateString()}
+              title={item.title}
+              text={`${item.location || ""} - ${item.doctor_name || ""} - ${item.description}`}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section id="complaints">
+        <SectionTitle small="Private Complaint System" title="Submit ward complaint" />
+        <div className="twoCol">
+          <form className="formCard" onSubmit={submitComplaint}>
+            <input placeholder="Your name" value={complaint.name} onChange={(e) => setComplaint({ ...complaint, name: e.target.value })} required />
+            <input placeholder="Phone number" value={complaint.phone} onChange={(e) => setComplaint({ ...complaint, phone: e.target.value })} required />
+            <select value={complaint.ward_no} onChange={(e) => setComplaint({ ...complaint, ward_no: e.target.value })}>
+              {Array.from({ length: 14 }, (_, i) => <option key={i + 1} value={i + 1}>Ward {i + 1}</option>)}
+            </select>
+            <select value={complaint.category} onChange={(e) => setComplaint({ ...complaint, category: e.target.value })}>
+              <option>Water Supply</option>
+              <option>Street Light</option>
+              <option>Road Issue</option>
+              <option>Drainage</option>
+              <option>Ration</option>
+              <option>Pension</option>
+              <option>Other</option>
+            </select>
+            <textarea placeholder="Write complaint details" value={complaint.message} onChange={(e) => setComplaint({ ...complaint, message: e.target.value })} required />
+            <button>Submit Private Complaint</button>
+          </form>
+
+          <div className="privacyCard">
+            <Lock size={42} />
+            <h3>Complaint Privacy Rule</h3>
+            <p>
+              Complaints are not shown to other villagers. Only Sarpanch and
+              Upa-Sarpanch can view and update complaint status after login.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="login" className="white">
+        <SectionTitle small="Leader Access" title="Sarpanch / Upa-Sarpanch Login" />
+        <div className="twoCol">
+          <form className="formCard" onSubmit={doLogin}>
+            <input placeholder="Phone number" value={login.phone} onChange={(e) => setLogin({ ...login, phone: e.target.value })} required />
+            <input type="password" placeholder="Password" value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} required />
+            <button><LogIn size={18} /> Login</button>
+            {user && <button type="button" className="danger" onClick={logout}>Logout {user.name}</button>}
+          </form>
+
+          <div className="privacyCard">
+            <Bell size={42} />
+            <h3>Default Login</h3>
+            <p><b>Sarpanch:</b> 9000000001 / sarpanch123</p>
+            <p><b>Upa-Sarpanch:</b> 9000000002 / upasarpanch123</p>
+          </div>
+        </div>
+
+        {isLeader && (
+          <div className="complaintDashboard">
+            <h3>Private Complaint Dashboard</h3>
+            {complaints.map((c) => (
+              <div className="complaintRow" key={c.id}>
+                <div>
+                  <b>{c.category}</b>
+                  <p>{c.name} · Ward {c.ward_no} · {c.phone}</p>
+                  <p>{c.message}</p>
+                </div>
+                <select value={c.status} onChange={(e) => updateComplaint(c.id, e.target.value)}>
+                  <option>Pending</option>
+                  <option>In Progress</option>
+                  <option>Resolved</option>
+                  <option>Rejected</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <footer>
+        <h3>Rechini Village Portal</h3>
+        <p>Tandur Mandal · Mancherial District · Telangana</p>
+      </footer>
+    </div>
+  );
+}
+
+function SectionTitle({ small, title }) {
+  return (
+    <div className="sectionTitle">
+      <p>{small}</p>
+      <h2>{title}</h2>
+    </div>
+  );
+}
+
+function Feature({ icon, title, text }) {
+  return (
+    <div className="feature">
+      <div className="icon">{icon}</div>
+      <h3>{title}</h3>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+function Card({ tag, title, text }) {
+  return (
+    <div className="card">
+      <span>{tag}</span>
+      <h3>{title}</h3>
+      <p>{text}</p>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);
