@@ -1,0 +1,65 @@
+name: Deploy My Village Website
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            set -e
+
+            APP_DIR="/home/ubuntu/my-village"
+            REPO_URL="https://github.com/maheshgajjela221/my-village.git"
+
+            echo "===== Installing required packages if missing ====="
+
+            if ! command -v git >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y git
+            fi
+
+
+            echo "===== Cloning project if not exists ====="
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              cd /home/ubuntu
+              sudo rm -rf my-village
+              git clone "$REPO_URL" my-village
+            fi
+
+            echo "===== Pulling latest code ====="
+
+            cd "$APP_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "===== Creating backend .env from GitHub Secret ====="
+
+            cat > backend/.env <<'EOF'
+            ${{ secrets.BACKEND_ENV }}
+            EOF
+
+            echo "===== Building and deploying containers ====="
+
+            sudo docker-compose down
+            sudo docker-compose up -d --build
+
+            echo "===== Cleaning old Docker images ====="
+
+            sudo docker image prune -f
+
+            echo "===== Deployment completed ====="
+
+            sudo docker ps
