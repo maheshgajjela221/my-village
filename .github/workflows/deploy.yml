@@ -1,57 +1,69 @@
-name: Deploy My Village Website
+name: Deploy My Village Website Dev
 
 on:
   push:
     branches:
-      - main
+      - dev
   workflow_dispatch:
 
 jobs:
-  deploy:
+  deploy-dev:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Server
+      - name: Deploy Dev Server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
             set -e
 
             APP_DIR="/home/ubuntu/my-village"
             REPO_URL="https://github.com/maheshgajjela221/my-village.git"
+            BRANCH="dev"
 
-            echo "===== Installing required packages if missing ====="
+            echo "===== Installing packages if missing ====="
 
             if ! command -v git >/dev/null 2>&1; then
               sudo apt-get update
               sudo apt-get install -y git
             fi
 
+            if ! command -v docker >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker.io docker-compose-plugin
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            fi
 
-            echo "===== Cloning project if not exists ====="
+            if ! sudo docker compose version >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker-compose-plugin
+            fi
+
+            echo "===== Cloning dev branch if not exists ====="
 
             if [ ! -d "$APP_DIR/.git" ]; then
               cd /home/ubuntu
               sudo rm -rf my-village
-              git clone "$REPO_URL" my-village
+              git clone -b "$BRANCH" "$REPO_URL" my-village
             fi
 
-            echo "===== Pulling latest code ====="
+            echo "===== Pulling latest dev code ====="
 
             cd "$APP_DIR"
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
 
             echo "===== Creating backend .env from GitHub Secret ====="
 
             cat > backend/.env <<'EOF'
-            ${{ secrets.BACKEND_ENV }}
+            ${{ secrets.DEV_BACKEND_ENV }}
             EOF
 
-            echo "===== Building and deploying containers ====="
+            echo "===== Building and deploying dev containers ====="
 
             sudo docker compose down
             sudo docker compose up -d --build
@@ -60,6 +72,6 @@ jobs:
 
             sudo docker image prune -f
 
-            echo "===== Deployment completed ====="
+            echo "===== Dev deployment completed ====="
 
             sudo docker ps
