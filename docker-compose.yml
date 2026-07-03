@@ -1,3 +1,4 @@
+#COMPOSEFILE
 services:
   postgres:
     image: postgres:16-alpine
